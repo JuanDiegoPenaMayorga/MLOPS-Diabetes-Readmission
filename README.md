@@ -35,9 +35,9 @@ The system employs a hybrid architecture to decouple the MLOps backend from the 
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-This guide assumes a **Debian-based environment (like Ubuntu 24.04)** with `sudo` access.
+This guide assumes a **Debian-based environment (like Ubuntu 24.04)** with `sudo` access and at least 12 GB RAM.
 
 ### 1. Prerequisites
 
