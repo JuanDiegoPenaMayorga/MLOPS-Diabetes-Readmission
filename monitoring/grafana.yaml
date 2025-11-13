@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: grafana}}
+  template:
+    metadata: {labels: {app: grafana}}
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.2.2
+        ports: [{containerPort: 3000}]
+        env:
+        - {name: GF_SECURITY_ADMIN_USER, value: "Admin"}
+        - {name: GF_SECURITY_ADMIN_PASSWORD, value: "SuperSecret"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: monitoring
+spec:
+  selector: {app: grafana}
+  ports: [{protocol: TCP, port: 3000, targetPort: 3000}]

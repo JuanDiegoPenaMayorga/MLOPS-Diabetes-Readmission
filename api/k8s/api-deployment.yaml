@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diabetes-api-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: diabetes-api
+  template:
+    metadata:
+      labels:
+        app: diabetes-api
+    spec:
+      containers:
+      - name: api
+        image: diabetes-api:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 80
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow:5000"
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: "http://minio:9000"
+        - name: AWS_ACCESS_KEY_ID
+          value: "Admin"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "SuperSecret"
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

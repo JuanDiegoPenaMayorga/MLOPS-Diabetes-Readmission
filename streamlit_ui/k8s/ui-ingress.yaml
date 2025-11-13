@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: diabetes-ui-ingress
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: ui.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: diabetes-ui-service
+            port:
+              number: 80

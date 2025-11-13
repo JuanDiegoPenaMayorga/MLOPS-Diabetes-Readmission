@@ -1,0 +1,188 @@
+version: '3.8'
+
+services:
+  BD_mlflow:
+    image: postgres:13
+    container_name: mlflow-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=Admin
+      - POSTGRES_PASSWORD=Admin
+      - POSTGRES_DB=mlflow
+    ports:
+      - "5440:5540"
+    command: ["postgres", "-p", "5540"]
+    volumes:
+      - BD_mlflow-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U Admin -p 5540" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: always
+    environment:
+      - MINIO_ROOT_USER=Admin
+      - MINIO_ROOT_PASSWORD=SuperSecret
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mlflow:
+    build: ./mlflow
+    container_name: mlflow
+    restart: always
+    mem_limit: 1g
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=Admin
+      - AWS_SECRET_ACCESS_KEY=SuperSecret
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://Admin:Admin@BD_mlflow:5540/mlflow
+      --default-artifact-root s3://mlflow/
+      --serve-artifacts
+      --host 0.0.0.0
+    depends_on:
+      BD_mlflow:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  BD_raw:
+    image: postgres:13
+    container_name: raw-data-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=Admin
+      - POSTGRES_PASSWORD=Admin
+      - POSTGRES_DB=raw_data
+    ports:
+      - "5441:5541"
+    command: ["postgres", "-p", "5541"]
+    volumes:
+      - BD_raw-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "Admin", "-p", "5541"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+        
+  BD_clean:
+    image: postgres:13
+    container_name: clean-data-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=Admin
+      - POSTGRES_PASSWORD=Admin
+      - POSTGRES_DB=clean_data
+    ports:
+      - "5442:5542"
+    command: ["postgres", "-p", "5542"]
+    volumes:
+      - BD_clean-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "Admin", "-p", "5542"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  BDmeta_airflow:
+    image: postgres:13
+    container_name: airflow-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=Admin
+      - POSTGRES_PASSWORD=Admin
+      - POSTGRES_DB=airflow
+    ports:
+      - "5443:5543"
+    command: ["postgres", "-p", "5543"]
+    volumes:
+      - BD_airflow-data:/var/lib/postgresql/data
+    healthcheck:
+        test: ["CMD", "pg_isready", "-U", "Admin", "-p", "5543"]
+        interval: 5s
+        timeout: 2s
+        retries: 10
+
+  airflow-webserver:
+    build: ./airflow
+    container_name: airflow-webserver
+    restart: always
+    command: webserver
+    user: "${AIRFLOW_UID:-50000}"
+    mem_limit: 2560m
+    depends_on:
+      BDmeta_airflow:
+        condition: service_healthy
+      BD_raw:
+        condition: service_healthy
+      BD_clean:
+        condition: service_healthy
+    env_file:
+      - ./airflow/.env
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://Admin:Admin@BDmeta_airflow:5543/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=Admin
+      - _AIRFLOW_WWW_USER_EMAIL=admin@example.com
+      - _AIRFLOW_WWW_USER_ROLE=Admin
+      - _AIRFLOW_WWW_USER_PASSWORD=SuperSecret
+      - AWS_ACCESS_KEY_ID=Admin
+      - AWS_SECRET_ACCESS_KEY=SuperSecret
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./airflow/kube:/opt/airflow/.kube
+      - ./data:/opt/airflow/data
+
+  airflow-scheduler:
+    build: ./airflow
+    container_name: airflow-scheduler
+    restart: always
+    command: scheduler
+    user: "${AIRFLOW_UID:-50000}"
+    mem_limit: 2560m
+    depends_on:
+      - airflow-webserver
+    env_file:
+      - ./airflow/.env
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://Admin:Admin@BDmeta_airflow:5543/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AWS_ACCESS_KEY_ID=Admin
+      - AWS_SECRET_ACCESS_KEY=SuperSecret
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./airflow/kube:/opt/airflow/.kube
+      - ./data:/opt/airflow/data
+
+volumes:
+  BD_mlflow-data:
+  minio-data:
+  BD_airflow-data:
+  BD_raw-data:
+  BD_clean-data:
